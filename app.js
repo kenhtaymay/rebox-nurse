@@ -1,13 +1,16 @@
 // ReBox Nurse ban web: y ta ao + do nhip tim/nhip tho qua camera ngay tren trinh duyet (rppg.js).
-// Khong co giong noi hai chieu (xiaozhi.me) - nguoi dung bam nut; y ta doc bang speechSynthesis vi-VN.
+// Nghe: SpeechRecognition cua trinh duyet (vi-VN) + tu khoa (intents.js) - khong co LLM nhu ban xiaozhi tren box.
+// Noi: speechSynthesis, giong nu tieng Viet.
 "use strict";
 
 const GREET = "Chào bác, cháu là y tá ReSmartBox đến từ Phòng khám Chuyên khoa Nội Gia Đình. " +
     "Hôm nay bác thấy trong người thế nào ạ?";
 const ASK = "Dạ được ạ. Bác ngồi thẳng, nhìn vào camera, đặt mặt vào khung và giữ yên khoảng 30 giây nhé.";
+const OFFER = "Bác có muốn cháu đo thử nhịp tim và nhịp thở qua camera không ạ?";
 const NOTE = "Số liệu chỉ để tham khảo, không thay thế thiết bị y tế.";
 const ADVICE = "Bác ngồi gần hơn, đủ sáng, giữ yên mặt trong khung rồi thử lại nhé.";
 const NEED_S = 30, TIMEOUT_S = 120, RESET_GAP_S = 2, STEP_CAP_S = 0.5, SKIN_MIN = 0.45, SAMPLE_W = 160;
+const MAX_SILENT = 3;          // so lan nghe lien tiep khong thay gi -> thoi tu nghe, cho bam mic
 
 const $ = id => document.getElementById(id);
 const video = $("video");
@@ -26,9 +29,11 @@ function addMsg(role, text) {
     $("log").scrollTop = $("log").scrollHeight;
 }
 
+// giong nu tieng Viet: Google Tieng Viet (Chrome), HoaiMy (Edge/Windows), Linh (iOS/macOS); bo giong nam
+const FEMALE = /hoaimy|hoai my|linh|google|female|nữ/i, MALE = /namminh|nam minh|\ban\b|male/i;
 function pickVoice() {
-    const vs = speechSynthesis.getVoices();
-    viVoice = vs.find(v => v.lang && v.lang.toLowerCase().startsWith("vi")) || null;
+    const vi = speechSynthesis.getVoices().filter(v => v.lang && v.lang.toLowerCase().startsWith("vi"));
+    viVoice = vi.find(v => FEMALE.test(v.name) && !MALE.test(v.name)) || vi.find(v => !MALE.test(v.name)) || vi[0] || null;
 }
 if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
@@ -42,6 +47,7 @@ function talking(on) {
 }
 
 function say(text) {
+    stopListening();                                    // khong tu nghe chinh giong y ta
     addMsg("nurse", text);
     return new Promise(done => {
         const fallback = () => { talking(true); setTimeout(() => { talking(false); done(); }, Math.min(8000, text.length * 55)); };
@@ -49,32 +55,136 @@ function say(text) {
         speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
         u.voice = viVoice; u.lang = viVoice.lang; u.rate = 1;
+        u.pitch = MALE.test(viVoice.name) ? 1.3 : 1.1;      // chi co giong nam thi nang cao do cho gan giong nu
         u.onstart = () => talking(true);
         u.onend = u.onerror = () => { talking(false); done(); };
         speechSynthesis.speak(u);
     });
 }
 
+// nut goi y: chuoi = cau nguoi dung noi; [nhan, ham] = hanh dong rieng
 function chips(list) {
     $("chips").innerHTML = "";
-    for (const [label, fn] of list) {
+    for (const item of list) {
+        const [label, fn] = Array.isArray(item) ? item : [item, () => userSays(item)];
         const b = document.createElement("button");
         b.className = "chip"; b.textContent = label;
-        b.onclick = () => { addMsg("user", label); chips([]); fn(); };
+        b.onclick = () => { chips([]); fn(); };
         $("chips").appendChild(b);
     }
 }
-const MAIN_CHIPS = () => [
-    ["Đo nhịp tim cho tôi", () => startMeasure()],
-    ["Tôi hơi mệt", () => say("Bác nên nghỉ ngơi, uống đủ nước. Bác có muốn cháu đo thử nhịp tim và nhịp thở qua camera không ạ?")
-        .then(() => chips([["Có, đo giúp tôi", () => startMeasure()], ["Không cần", () => say("Dạ vâng, bác cần gì cứ gọi cháu nhé.").then(() => chips(MAIN_CHIPS()))]]))],
-    ["Tạm biệt", () => say("Dạ cháu chúc bác nhiều sức khoẻ, hẹn gặp lại bác ạ!").then(() => chips(MAIN_CHIPS()))],
-];
+const MAIN_CHIPS = ["Đo nhịp tim cho tôi", "Tôi hơi mệt", "Tạm biệt"];
 
 function toast(text) {
     const t = $("toast");
     t.textContent = text; t.style.display = "block";
     clearTimeout(toast.h); toast.h = setTimeout(() => { t.style.display = "none"; }, 2500);
+}
+
+// ---------- hoi thoai ----------
+let offered = false;           // y ta vua hoi "co muon do khong"
+let convo = false;             // dang trong cuoc tro chuyen -> tu nghe sau moi luot y ta noi
+
+async function userSays(text) {
+    addMsg("user", text);
+    chips([]);
+    const intent = Intents.classify(text, { offered });
+    offered = false;
+    switch (intent) {
+        case "danger":
+            await say("Bác cần được giúp ngay ạ. Bác gọi 115 hoặc báo nhân viên phòng khám ngay nhé, đừng chờ đo.");
+            break;
+        case "measure":
+            return startMeasure();
+        case "no":
+            await say("Dạ vâng, bác cần gì cứ nói với cháu nhé.");
+            break;
+        case "symptom":
+            await say("Dạ bác nên nghỉ ngơi và uống đủ nước. " + OFFER);
+            offered = true;
+            break;
+        case "medicine":
+            await say("Dạ việc dùng thuốc hay chẩn đoán cần bác sĩ hoặc dược sĩ trực tiếp tư vấn ạ. " + OFFER);
+            offered = true;
+            break;
+        case "bye":
+            await say("Dạ cháu chúc bác nhiều sức khoẻ, hẹn gặp lại bác ạ!");
+            convo = false;
+            chips(MAIN_CHIPS);
+            return;
+        case "hello":
+            await say(GREET);
+            break;
+        case "empty":
+            break;
+        default:
+            await say("Dạ cháu chỉ hỗ trợ được về sức khoẻ và đo nhịp tim, nhịp thở thôi ạ. " + OFFER);
+            offered = true;
+    }
+    chips(offered ? ["Có, đo giúp tôi", "Không cần"] : MAIN_CHIPS);
+    listen();
+}
+
+// ---------- nghe (SpeechRecognition) ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, silent = 0, micOk = false;
+
+function micUI(on) {
+    listening = on;
+    $("mic").classList.toggle("on", on);
+    $("heard").textContent = on ? "Cháu đang nghe…" : "";
+}
+
+function stopListening() {
+    if (rec) { rec.onend = null; try { rec.abort(); } catch (e) {} rec = null; }
+    micUI(false);
+}
+
+function listen(manual) {
+    if (!SR || !micOk || measuring || listening || (!convo && !manual)) return;
+    if (manual) { convo = true; silent = 0; }
+    let heard = "";
+    rec = new SR();
+    rec.lang = "vi-VN";
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    rec.onresult = e => {
+        let text = "";
+        for (const r of e.results) text += r[0].transcript;
+        $("heard").textContent = "🎤 " + text;
+        if (e.results[e.results.length - 1].isFinal) heard = text.trim();
+    };
+    rec.onerror = e => {
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+            micOk = false; convo = false;
+            toast("Chưa có quyền micro - bác vẫn bấm được các nút bên dưới");
+        }
+    };
+    rec.onend = () => {
+        rec = null;
+        micUI(false);
+        if (heard) { silent = 0; userSays(heard); return; }
+        if (convo && ++silent < MAX_SILENT) return listen();
+        convo = false;
+        $("heard").textContent = "Bấm 🎤 để nói với y tá";
+    };
+    try { rec.start(); micUI(true); } catch (e) { micUI(false); }
+}
+
+async function requestMic() {
+    if (!SR) {
+        $("mic").disabled = true;
+        await say("Trình duyệt này chưa nghe được giọng nói. Bác dùng Chrome hoặc Safari, hoặc bấm các nút bên dưới nhé.");
+        return false;
+    }
+    try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });   // xin quyen micro ngay tu dau
+        s.getTracks().forEach(t => t.stop());
+        return (micOk = true);
+    } catch (e) {
+        await say("Cháu chưa được phép dùng micro nên chưa nghe được bác nói. Bác cho phép Micro ở biểu tượng ổ khoá cạnh địa chỉ trang, hoặc bấm các nút bên dưới nhé.");
+        return false;
+    }
 }
 
 // ---------- camera ----------
@@ -122,7 +232,7 @@ async function requestCamera() {
         await say(denied
             ? "Cháu chưa được phép dùng camera. Bác bấm biểu tượng ổ khoá cạnh địa chỉ trang, cho phép Camera, rồi bấm Thử lại nhé."
             : "Cháu không mở được camera (" + e.name + "). Bác kiểm tra camera có đang được ứng dụng khác dùng không nhé.");
-        chips([["Thử lại", async () => { if (await requestCamera()) { await say(GREET); chips(MAIN_CHIPS()); } }]]);
+        chips([["Thử lại", async () => { if (await requestCamera()) begin(); }]]);
         return false;
     }
 }
@@ -188,6 +298,7 @@ function nextFrame() {
 async function startMeasure() {
     if (measuring) return;
     if (!stream && !(await requestCamera())) return;
+    convo = true;
     await say(ASK);
     measuring = true; resetRun(); t0 = performance.now() / 1000;
     $("modal").classList.add("on");
@@ -210,21 +321,38 @@ async function finish() {
     else r = RPPG.estimate(run.samples);
     console.log("ket qua do", r);
     window.lastResult = r;
-    if (!r.ok) await say(`Cháu chưa đo được ạ, vì ${r.reason}. ${ADVICE}`);
-    else {
+    if (!r.ok) {
+        await say(`Cháu chưa đo được ạ, vì ${r.reason}. ${ADVICE} Bác có muốn đo lại không ạ?`);
+        offered = true;
+    } else {
         const hr = r.heart_rate_bpm, rr = r.breathing_rate_per_min;
         let text = `Cháu đo xong rồi ạ. Nhịp tim của bác khoảng ${hr} lần mỗi phút`;
         text += rr ? `, nhịp thở khoảng ${rr} lần mỗi phút.` : `. Cháu chưa đo được nhịp thở.`;
         if (hr < 60 || hr > 100) text += ` Nhịp tim này hơi ${hr > 100 ? "cao" : "thấp"} hơn mức thường gặp, bác nghỉ ngơi rồi đo lại nhé.`;
         await say(`${text} ${NOTE}`);
     }
-    chips([["Đo lại", () => startMeasure()], ...MAIN_CHIPS().slice(1)]);
+    chips(offered ? ["Có, đo lại", "Không cần"] : ["Đo lại", "Tôi hơi mệt", "Tạm biệt"]);
+    listen();
 }
 
 // ---------- nut ----------
-$("measure").onclick = () => { addMsg("user", "Đo nhịp tim cho tôi"); chips([]); startMeasure(); };
+async function begin() {
+    convo = true;
+    await say(GREET);
+    chips(MAIN_CHIPS);
+    listen();
+}
+$("measure").onclick = () => { stopListening(); userSays("Đo nhịp tim cho tôi"); };
 $("switch").onclick = $("switch2").onclick = switchCamera;
-$("cancel").onclick = () => { stopMeasure(); say("Dạ cháu đã dừng đo. Khi nào bác muốn đo thì bấm nút nhé.").then(() => chips(MAIN_CHIPS())); };
+$("mic").onclick = () => {
+    if (listening) { convo = false; stopListening(); return; }
+    if (!micOk) return requestMic().then(ok => ok && listen(true));
+    listen(true);
+};
+$("cancel").onclick = () => {
+    stopMeasure();
+    say("Dạ cháu đã dừng đo. Khi nào bác muốn đo thì nói với cháu nhé.").then(() => { chips(MAIN_CHIPS); listen(); });
+};
 $("voice").onclick = () => {
     voiceOn = !voiceOn;
     $("voice").textContent = voiceOn ? "🔊" : "🔇";
@@ -232,9 +360,7 @@ $("voice").onclick = () => {
 };
 $("start").onclick = async () => {
     $("splash").style.display = "none";
-    const ok = await requestCamera();                 // xin quyen camera truoc tien
-    if (ok) {
-        await say(GREET);
-        chips(MAIN_CHIPS());
-    }
+    const cam = await requestCamera();               // xin quyen camera, roi micro, truoc tien
+    await requestMic();
+    if (cam) begin();
 };
