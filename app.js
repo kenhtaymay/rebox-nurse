@@ -46,9 +46,11 @@ function talking(on) {
     talkTimer = setInterval(() => mouth(seq[i++ % seq.length]), 130);
 }
 
+let lastSaid = "", saidAt = 0;
 function say(text) {
     stopListening();                                    // khong tu nghe chinh giong y ta
     addMsg("nurse", text);
+    lastSaid = text;
     return new Promise(done => {
         const fallback = () => { talking(true); setTimeout(() => { talking(false); done(); }, Math.min(8000, text.length * 55)); };
         if (!voiceOn || !viVoice) return fallback();       // khong co giong tieng Viet: chi nhep moi
@@ -57,7 +59,7 @@ function say(text) {
         u.voice = viVoice; u.lang = viVoice.lang; u.rate = 1;
         u.pitch = MALE.test(viVoice.name) ? 1.3 : 1.1;      // chi co giong nam thi nang cao do cho gan giong nu
         u.onstart = () => talking(true);
-        u.onend = u.onerror = () => { talking(false); done(); };
+        u.onend = u.onerror = () => { talking(false); saidAt = performance.now(); done(); };
         speechSynthesis.speak(u);
     });
 }
@@ -140,8 +142,17 @@ function stopListening() {
     micUI(false);
 }
 
+// cau nghe duoc la tieng y ta vong lai qua loa (>= 60% tu trung voi cau y ta vua noi) -> bo qua
+function isEcho(text) {
+    const words = Intents.fold(text).trim().split(" ").filter(Boolean);
+    const said = new Set(Intents.fold(lastSaid).trim().split(" "));
+    return words.length >= 3 && words.filter(w => said.has(w)).length / words.length >= 0.6;
+}
+
 function listen(manual) {
     if (!SR || !micOk || measuring || listening || (!convo && !manual)) return;
+    const wait = 600 - (performance.now() - saidAt);    // loa con vang sau khi onend -> doi mot chut
+    if (wait > 0) { setTimeout(() => listen(manual), wait); return; }
     if (manual) { convo = true; silent = 0; }
     let heard = "";
     rec = new SR();
@@ -163,6 +174,7 @@ function listen(manual) {
     rec.onend = () => {
         rec = null;
         micUI(false);
+        if (heard && isEcho(heard)) { console.log("bo qua tieng vong:", heard); heard = ""; }
         if (heard) { silent = 0; userSays(heard); return; }
         if (convo && ++silent < MAX_SILENT) return listen();
         convo = false;
@@ -358,6 +370,14 @@ $("voice").onclick = () => {
     $("voice").textContent = voiceOn ? "🔊" : "🔇";
     if (!voiceOn && "speechSynthesis" in window) speechSynthesis.cancel();
 };
+// popup cong nghe rPPG: bam vao logo nhom o dau khung chat
+const infoModal = $("infoModal");
+$("brand").onclick = () => infoModal.classList.add("on");
+$("brand").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); infoModal.classList.add("on"); } };
+$("infoClose").onclick = () => infoModal.classList.remove("on");
+infoModal.onclick = e => { if (e.target === infoModal) infoModal.classList.remove("on"); };
+addEventListener("keydown", e => { if (e.key === "Escape") infoModal.classList.remove("on"); });
+
 $("start").onclick = async () => {
     $("splash").style.display = "none";
     const cam = await requestCamera();               // xin quyen camera, roi micro, truoc tien

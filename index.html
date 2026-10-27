@@ -32,6 +32,23 @@ button { font: inherit; cursor: pointer; border: 0; }
 .chat { background: var(--panel); border-radius: 28px; display: flex; flex-direction: column; min-height: 0; }
 .brand { display: flex; align-items: center; gap: 18px; padding: 18px 24px; border-bottom: 3px solid var(--bg); }
 .brand img { height: 64px; }
+.brand { cursor: pointer; }
+.brand:hover b { text-decoration: underline; }
+.brand i { display: block; font-style: normal; color: #5ad1ff; font-size: 14px; margin-top: 2px; }
+/* ---- popup cong nghe ---- */
+.info { background: #fff; color: #1d2b3a; border-radius: 18px; width: min(760px, 100%); max-height: 88vh;
+  display: flex; flex-direction: column; overflow: hidden; }
+.info header { display: flex; align-items: center; gap: 14px; padding: 16px 20px; background: #0f1b2a; color: #fff; }
+.info header img { height: 48px; }
+.info header h2 { margin: 0; font-size: 21px; flex: 1; }
+.info header button { background: #2c4468; color: #fff; border-radius: 10px; padding: 8px 14px; font-size: 18px; }
+.info .body { overflow-y: auto; padding: 8px 24px 20px; line-height: 1.6; font-size: 16px; }
+.info h3 { color: #c0392b; margin: 18px 0 6px; font-size: 18px; }
+.info ol.steps li { margin-bottom: 4px; }
+.info .refs { font-size: 14px; padding-left: 22px; }
+.info .refs li { margin-bottom: 8px; }
+.info .refs a { color: #1a6fb5; word-break: break-all; }
+.info .note { background: #fff4e5; border-left: 4px solid #f59e0b; padding: 8px 12px; border-radius: 6px; font-size: 15px; }
 .brand b { display: block; font-size: 24px; }
 .brand span { color: var(--sub); font-size: 15px; }
 #log { flex: 1; overflow-y: auto; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; }
@@ -88,6 +105,12 @@ button { font: inherit; cursor: pointer; border: 0; }
   .chip { font-size: 14px; padding: 6px 12px; }
   .bar { padding: 10px 12px 12px; }
   .btn { font-size: 16px; padding: 10px 12px; }
+  .bar .lbl { display: none; }                         /* nut Doi camera chi con bieu tuong */
+  .modal { padding: 8px; }
+  .info header { padding: 10px 12px; gap: 10px; }
+  .info header img { height: 32px; }
+  .info header h2 { font-size: 16px; }
+  .info .body { padding: 4px 14px 14px; font-size: 15px; }
 }
 </style>
 </head>
@@ -105,9 +128,9 @@ button { font: inherit; cursor: pointer; border: 0; }
     </div>
   </section>
   <section class="chat">
-    <div class="brand">
+    <div class="brand" id="brand" role="button" tabindex="0" title="Công nghệ đo nhịp tim bằng camera (rPPG)">
       <img src="assets/brand/resmartbox-logo.png" alt="ReSmartBox">
-      <div><b>ReBox Nurse</b><span>Đo nhịp tim, nhịp thở chỉ bằng webcam</span></div>
+      <div><b>ReBox Nurse</b><span>Đo nhịp tim, nhịp thở chỉ bằng webcam</span><i>ⓘ Công nghệ rPPG</i></div>
     </div>
     <div id="log"></div>
     <div class="chips" id="chips"></div>
@@ -115,7 +138,7 @@ button { font: inherit; cursor: pointer; border: 0; }
     <div class="bar">
       <button class="btn" id="mic" title="Nói với y tá">🎤</button>
       <button class="btn main" id="measure">❤ Đo nhịp tim</button>
-      <button class="btn" id="switch" title="Đổi camera">🔄 Đổi camera</button>
+      <button class="btn" id="switch" title="Đổi camera">🔄<span class="lbl"> Đổi camera</span></button>
       <button class="btn" id="voice" title="Bật/tắt giọng nói">🔊</button>
     </div>
   </section>
@@ -132,6 +155,66 @@ button { font: inherit; cursor: pointer; border: 0; }
     <div class="bar">
       <button class="btn" id="switch2">🔄 Đổi camera</button>
       <button class="btn" id="cancel">Huỷ</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="infoModal">
+  <div class="info" role="dialog" aria-labelledby="infoTitle">
+    <header>
+      <img src="assets/brand/resmartbox-logo.png" alt="ReSmartBox">
+      <h2 id="infoTitle">Đo nhịp tim bằng camera: công nghệ rPPG</h2>
+      <button id="infoClose" aria-label="Đóng">✕</button>
+    </header>
+    <div class="body">
+      <h3>rPPG là gì?</h3>
+      <p><b>rPPG</b> (remote photoplethysmography, quang thể tích ký từ xa) đo mạch đập <b>không cần chạm</b>,
+        chỉ bằng camera thường. Mỗi nhịp tim đẩy máu tới các mao mạch dưới da, làm da hấp thụ ánh sáng
+        khác đi một chút, nhất là ở kênh màu xanh lá. Mắt người không thấy được thay đổi màu rất nhỏ
+        (dưới 1%) này, nhưng camera ghi lại được khung hình theo thời gian.
+        Hiện tượng này được chứng minh với camera thường và ánh sáng phòng từ năm 2008 [1, 2].</p>
+
+      <h3>Y tá ReSmartBox đo như thế nào?</h3>
+      <ol class="steps">
+        <li><b>Lấy vùng da:</b> vùng trán và má trong khung hướng dẫn; chỉ tính các điểm có màu da (không gian màu YCrCb).</li>
+        <li><b>Tín hiệu màu:</b> mỗi khung hình lấy trung bình đỏ, xanh lá, xanh dương của vùng da, khoảng 15–30 lần mỗi giây, trong 30 giây.</li>
+        <li><b>Tách mạch đập bằng thuật toán POS</b> [4]: chiếu tín hiệu màu lên mặt phẳng vuông góc với màu da
+          để loại bớt ảnh hưởng của ánh sáng và chuyển động, giữ lại dao động do máu. CHROM [3] là phương pháp
+          cùng họ, dùng để đối chiếu trong bản ReBox Vitals trên TV-box.</li>
+        <li><b>Phân tích tần số:</b> biến đổi Fourier, tìm đỉnh mạnh nhất trong dải 0,7–4 Hz, tức 42–240 lần/phút,
+          ra <b>nhịp tim</b>. Dải 0,13–0,55 Hz của cùng tín hiệu cho <b>nhịp thở</b> [6].</li>
+        <li><b>Độ tin cậy:</b> chỉ báo kết quả khi đỉnh nổi rõ so với nhiễu (tỉ số tín hiệu/nhiễu SNR ≥ 9).
+          Nếu tín hiệu yếu, y tá sẽ nói chưa đo được thay vì đoán.</li>
+      </ol>
+
+      <h3>Quyền riêng tư</h3>
+      <p>Hình ảnh camera được xử lý <b>ngay trên máy</b> (điện thoại, máy tính hoặc TV-box), không lưu và không gửi đi.
+        Bản trên TV-box tái chế chạy hoàn toàn trên thiết bị, dùng thêm bộ dò khuôn mặt YuNet [8].</p>
+
+      <h3>Giới hạn</h3>
+      <p class="note">Số liệu chỉ để tham khảo, <b>không thay thế thiết bị y tế</b>. Kết quả kém chính xác khi thiếu sáng,
+        ngược sáng, cử động, camera tốc độ khung hình thấp hoặc khuôn mặt nằm ngoài khung. Khi có triệu chứng
+        đáng lo như đau ngực hoặc khó thở, hãy gọi 115.</p>
+
+      <h3>Tài liệu khoa học</h3>
+      <ol class="refs">
+        <li>W. Verkruysse, L. O. Svaasand, J. S. Nelson, “Remote plethysmographic imaging using ambient light,”
+          <i>Optics Express</i>, 16(26):21434, 2008. <a href="https://doi.org/10.1364/OE.16.021434" target="_blank" rel="noopener">doi:10.1364/OE.16.021434</a></li>
+        <li>M.-Z. Poh, D. J. McDuff, R. W. Picard, “Non-contact, automated cardiac pulse measurements using video imaging and blind source separation,”
+          <i>Optics Express</i>, 18(10):10762, 2010. <a href="https://doi.org/10.1364/OE.18.010762" target="_blank" rel="noopener">doi:10.1364/OE.18.010762</a></li>
+        <li>G. de Haan, V. Jeanne, “Robust pulse rate from chrominance-based rPPG,”
+          <i>IEEE Transactions on Biomedical Engineering</i>, 60(10):2878–2886, 2013. <a href="https://doi.org/10.1109/TBME.2013.2266196" target="_blank" rel="noopener">doi:10.1109/TBME.2013.2266196</a></li>
+        <li>W. Wang, A. C. den Brinker, S. Stuijk, G. de Haan, “Algorithmic principles of remote PPG,”
+          <i>IEEE Transactions on Biomedical Engineering</i>, 64(7):1479–1491, 2017. <a href="https://doi.org/10.1109/TBME.2016.2609282" target="_blank" rel="noopener">doi:10.1109/TBME.2016.2609282</a></li>
+        <li>G. Boccignone et al., “An open framework for remote-PPG methods and their assessment,”
+          <i>IEEE Access</i>, 8:216083–216103, 2020. <a href="https://doi.org/10.1109/ACCESS.2020.3040936" target="_blank" rel="noopener">doi:10.1109/ACCESS.2020.3040936</a></li>
+        <li>M. van Gastel, S. Stuijk, G. de Haan, “Robust respiration detection from remote photoplethysmography,”
+          <i>Biomedical Optics Express</i>, 7(12):4941, 2016. <a href="https://doi.org/10.1364/BOE.7.004941" target="_blank" rel="noopener">doi:10.1364/BOE.7.004941</a></li>
+        <li>D. McDuff, “Camera measurement of physiological vital signs,”
+          <i>ACM Computing Surveys</i>, 55(9):1–40, 2023 (tổng quan). <a href="https://doi.org/10.1145/3558518" target="_blank" rel="noopener">doi:10.1145/3558518</a></li>
+        <li>W. Wu, H. Peng, S. Yu, “YuNet: A tiny millisecond-level face detector,”
+          <i>Machine Intelligence Research</i>, 20(5):656–665, 2023. <a href="https://doi.org/10.1007/s11633-023-1423-y" target="_blank" rel="noopener">doi:10.1007/s11633-023-1423-y</a></li>
+      </ol>
     </div>
   </div>
 </div>
