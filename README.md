@@ -1,0 +1,11 @@
+# Y tá ảo ReSmartBox (bản web)
+
+Y tá ảo đo **nhịp tim, nhịp thở chỉ bằng camera** (rPPG, thuật toán POS), chạy ngay trên trình duyệt
+điện thoại hoặc máy tính: https://kenhtaymay.github.io/rebox-nurse/
+
+- Trang xin quyền camera trước, có nút **Đổi camera** (camera trước/sau, hoặc nhiều webcam).
+- Hình ảnh chỉ xử lý trên máy người dùng, không gửi đi đâu.
+- Số liệu chỉ để tham khảo, không thay thế thiết bị y tế.
+
+Bản đầy đủ (chạy trên TV-box tái chế, trò chuyện bằng giọng nói) thuộc dự án ReBox / ReSmartBox.
+Font Noto Sans: SIL Open Font License (`assets/fonts/OFL.txt`).
